@@ -1164,6 +1164,26 @@
       return 'otro';
     }
 
+    // Convierte un archivo guardado (data URL) en una URL liviana que el navegador maneja sin límite de peso
+    let ultimaBlobURL = null;
+    function obtenerURLVisualizable(archivo) {
+      if (!archivo.contenido || !archivo.contenido.startsWith('data:')) return null;
+      try {
+        const [encabezado, base64] = archivo.contenido.split(',');
+        const tipoMime = encabezado.match(/data:(.*?);base64/)?.[1] || archivo.tipo || 'application/octet-stream';
+        const binario = atob(base64);
+        const bytes = new Uint8Array(binario.length);
+        for (let i = 0; i < binario.length; i++) bytes[i] = binario.charCodeAt(i);
+        const blob = new Blob([bytes], { type: tipoMime });
+        if (ultimaBlobURL) URL.revokeObjectURL(ultimaBlobURL);
+        ultimaBlobURL = URL.createObjectURL(blob);
+        return ultimaBlobURL;
+      } catch (e) {
+        console.error('No se pudo convertir el archivo a Blob:', e);
+        return null;
+      }
+    }
+
     function abrirDocumento(idx) {
       const archivo = archivosTemporales[idx];
       if (!archivo) return;
@@ -1175,12 +1195,13 @@
       const modal = document.getElementById('modalDocumento');
       const tipo = tipoDeArchivo(archivo);
       const tieneContenido = archivo.contenido && archivo.contenido.startsWith('data:');
-      const btnNuevaPestana = tieneContenido ? `<a href="${archivo.contenido}" target="_blank" rel="noopener" class="btn btn-secondary" style="display: inline-block; margin-top: 0.6rem; text-decoration: none;">↗️ Abrir en pestaña nueva</a>` : '';
+      const urlLigera = tieneContenido ? obtenerURLVisualizable(archivo) : null;
+      const btnNuevaPestana = urlLigera ? `<a href="${urlLigera}" target="_blank" rel="noopener" class="btn btn-secondary" style="display: inline-block; margin-top: 0.6rem; text-decoration: none;">↗️ Abrir en pestaña nueva</a>` : '';
 
       if (tipo === 'pdf') {
         // PDFs - intentar mostrar en iframe primero
-        if (tieneContenido) {
-          visor.innerHTML = '<div style="width:100%; height:100%; display:flex; flex-direction:column;"><iframe src="' + archivo.contenido + '" style="width: 100%; flex:1; border: none;"></iframe><div style="text-align:center; padding:0.5rem; background:#fff;">' + btnNuevaPestana + '</div></div>';
+        if (urlLigera) {
+          visor.innerHTML = '<div style="width:100%; height:100%; display:flex; flex-direction:column;"><iframe src="' + urlLigera + '" style="width: 100%; flex:1; border: none;"></iframe><div style="text-align:center; padding:0.5rem; background:#fff;">' + btnNuevaPestana + '</div></div>';
         } else {
           visor.innerHTML = `
             <div style="text-align: center; padding: 2rem; background: white; border-radius: 8px;">
@@ -1191,8 +1212,8 @@
           `;
         }
       } else if (tipo === 'image') {
-        if (tieneContenido) {
-          visor.innerHTML = '<img src="' + archivo.contenido + '" style="max-width: 100%; max-height: 100%; object-fit: contain;">';
+        if (urlLigera) {
+          visor.innerHTML = '<img src="' + urlLigera + '" style="max-width: 100%; max-height: 100%; object-fit: contain;">';
         } else {
           visor.innerHTML = '<p style="text-align: center; color: #999;">⚠️ Esta imagen quedó guardada sin su contenido. Quítala de la lista y vuelve a subirla.</p>';
         }
@@ -1221,6 +1242,7 @@
 
     function cerrarDocumento() {
       document.getElementById('modalDocumento').style.display = 'none';
+      if (ultimaBlobURL) { URL.revokeObjectURL(ultimaBlobURL); ultimaBlobURL = null; }
     }
 
     function descargarArchivo(idx) {
@@ -1244,11 +1266,12 @@
       const modal = document.getElementById('modalDocumento');
       const tipo = tipoDeArchivo(archivo);
       const tieneContenido = archivo.contenido && archivo.contenido.startsWith('data:');
-      const btnNuevaPestana = tieneContenido ? `<a href="${archivo.contenido}" target="_blank" rel="noopener" class="btn btn-secondary" style="display: inline-block; margin-top: 0.6rem; text-decoration: none;">↗️ Abrir en pestaña nueva</a>` : '';
+      const urlLigera = tieneContenido ? obtenerURLVisualizable(archivo) : null;
+      const btnNuevaPestana = urlLigera ? `<a href="${urlLigera}" target="_blank" rel="noopener" class="btn btn-secondary" style="display: inline-block; margin-top: 0.6rem; text-decoration: none;">↗️ Abrir en pestaña nueva</a>` : '';
 
       if (tipo === 'pdf') {
-        if (tieneContenido) {
-          visor.innerHTML = '<div style="width:100%; height:100%; display:flex; flex-direction:column;"><iframe src="' + archivo.contenido + '" style="width: 100%; flex:1; border: none;"></iframe><div style="text-align:center; padding:0.5rem; background:#fff;">' + btnNuevaPestana + '</div></div>';
+        if (urlLigera) {
+          visor.innerHTML = '<div style="width:100%; height:100%; display:flex; flex-direction:column;"><iframe src="' + urlLigera + '" style="width: 100%; flex:1; border: none;"></iframe><div style="text-align:center; padding:0.5rem; background:#fff;">' + btnNuevaPestana + '</div></div>';
         } else {
           visor.innerHTML = `
             <div style="text-align: center; padding: 2rem; background: white; border-radius: 8px;">
@@ -1259,18 +1282,18 @@
           `;
         }
       } else if (tipo === 'image') {
-        if (tieneContenido) {
-          visor.innerHTML = '<div style="width:100%; height:100%; display:flex; flex-direction:column; align-items:center; justify-content:center;"><img src="' + archivo.contenido + '" style="max-width: 100%; max-height: 85%; object-fit: contain;">' + btnNuevaPestana + '</div>';
+        if (urlLigera) {
+          visor.innerHTML = '<div style="width:100%; height:100%; display:flex; flex-direction:column; align-items:center; justify-content:center;"><img src="' + urlLigera + '" style="max-width: 100%; max-height: 85%; object-fit: contain;">' + btnNuevaPestana + '</div>';
         } else {
           visor.innerHTML = '<p style="text-align: center; color: #999;">⚠️ Esta imagen quedó guardada sin su contenido. Elimínala con el botón 🗑️ de arriba y vuelve a subirla.</p>';
         }
       } else if (tipo === 'word') {
-        visor.innerHTML = tieneContenido ? `
+        visor.innerHTML = urlLigera ? `
           <div style="text-align: center; padding: 2rem; background: white; border-radius: 8px;">
             <div style="font-size: 48px; margin-bottom: 1rem;">📘</div>
             <div style="font-size: 14px; margin-bottom: 1rem; color: #666;">Documento Word</div>
             <p style="margin: 0; color: #999; font-size: 12px;">Los documentos Word no se pueden visualizar directamente aquí.</p>
-            <a href="${archivo.contenido}" download="${archivo.nombre_archivo}" class="btn btn-primary" style="display: inline-block; margin-top: 1rem; text-decoration: none;">⬇️ Descargar archivo</a>
+            <a href="${urlLigera}" download="${archivo.nombre_archivo}" class="btn btn-primary" style="display: inline-block; margin-top: 1rem; text-decoration: none;">⬇️ Descargar archivo</a>
           </div>
         ` : `
           <div style="text-align: center; padding: 2rem; background: white; border-radius: 8px;">
